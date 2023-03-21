@@ -13,6 +13,7 @@ import (
 CustomZip facility the process to zip and unzip files in golang
 
 Usage:
+
 	1 - Create a new zip file
 		oZip := CustomZip()
 
@@ -33,9 +34,10 @@ func CustomZip() customZip {
 }
 
 type customZip struct {
-	ZipFile  *os.File
-	writer   *zip.Writer
-	PermMode fs.FileMode
+	ZipFile     *os.File
+	writer      *zip.Writer
+	PermMode    fs.FileMode
+	currentPath string
 }
 
 // Create creates a new zip file
@@ -71,13 +73,19 @@ func removePrefix(s string) string {
 	return s
 }
 
-//Add add a single file or a tree directory into the zip file
+// Add add a single file or a tree directory into the zip file
 func (o *customZip) Add(originFile string) error {
+
+	o.currentPath = ""
+
+	originFile = strings.ReplaceAll(originFile, "\\", "/")
 
 	f, err := os.Stat(originFile)
 	if err != nil {
 		return err
 	} else if f.IsDir() {
+		o.currentPath = originFile
+
 		err = filepath.WalkDir(originFile, o.walkFunc)
 
 		return err
@@ -94,10 +102,15 @@ func (o *customZip) walkFunc(path string, d fs.DirEntry, err error) error {
 	}
 
 	path = strings.ReplaceAll(path, "\\", "/")
-	p := removePrefix(path)
+
+	if o.currentPath == path {
+		return nil
+	}
+
+	p := filepath.Base(path)
 
 	if d.IsDir() {
-		_, err = o.writer.Create(p + "/")
+		_, err = o.writer.Create(filepath.Base(o.currentPath) + "/" + p + "/")
 		return err
 	}
 
@@ -107,13 +120,19 @@ func (o *customZip) walkFunc(path string, d fs.DirEntry, err error) error {
 
 func (o *customZip) addFile(originFile string) error {
 
+	var base string
+
+	if o.currentPath != "" {
+		base = filepath.Base(o.currentPath) + "/"
+	}
+
 	oF, err := os.Open(originFile)
 	if err != nil {
 		return err
 	}
 	defer oF.Close()
 
-	zF, err := o.writer.Create(removePrefix(originFile))
+	zF, err := o.writer.Create(base + filepath.Base(removePrefix(originFile)))
 	if err != nil {
 		return err
 	}
@@ -122,13 +141,13 @@ func (o *customZip) addFile(originFile string) error {
 	return err
 }
 
-//Close closes a zip file
+// Close closes a zip file
 func (o *customZip) Close() error {
 	o.writer.Close()
 	return o.ZipFile.Close()
 }
 
-//Unzip unzip zipFile to destFolder
+// Unzip unzip zipFile to destFolder
 func (o *customZip) Unzip(zipFile string, destFolder string) error {
 
 	r, err := zip.OpenReader(zipFile)
